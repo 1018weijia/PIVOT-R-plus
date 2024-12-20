@@ -101,3 +101,4 @@ wandb==0.19.1
 wcwidth==0.2.13
 wheel==0.44.0
 zipp==3.21.0
+-e src/open_clip
