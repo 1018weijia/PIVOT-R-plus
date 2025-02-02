@@ -66,6 +66,10 @@ def init_weights(module):
 
 
 def extract_state_dict(state_dict, module_name):
+    '''
+    从一个包含多个模块参数的状态字典中提取特定模块的参数，并返回一个新的有序字典。
+    在模型的保存和加载过程中非常有用，特别是当只想保存或加载模型的一部分参数时。
+    '''
     return OrderedDict({k.split('.', 1)[1]: v for k, v in state_dict.items() if k.startswith(module_name)})
 
 
@@ -99,6 +103,9 @@ def compute_lambda_returns(rewards, values, ends, gamma, lambda_):
 
 
 class LossWithIntermediateLosses:
+    '''
+    记录损失函数的总和和每个中间损失的字典
+    '''
     def __init__(self, **kwargs):
         self.loss_total = sum(kwargs.values())
         self.intermediate_losses = {k: v.item() for k, v in kwargs.items()}
@@ -111,6 +118,9 @@ class LossWithIntermediateLosses:
 
 
 class RandomHeuristic:
+    '''
+    随机动作的启发式策略
+    '''
     def __init__(self, num_actions):
         self.num_actions = num_actions
 
@@ -121,6 +131,9 @@ class RandomHeuristic:
 
 
 def make_video(fname, fps, frames):
+    '''
+    这个函数的作用是将帧序列保存为视频文件
+    '''
     assert frames.ndim == 4 # (t, h, w, c)
     t, h, w, c = frames.shape
     assert c == 3
@@ -133,6 +146,7 @@ def make_video(fname, fps, frames):
 
 
 def get_mask_from_json(json_path, img):
+
     try:
         with open(json_path, "r") as r:
             anno = json.loads(r.read())
@@ -140,6 +154,7 @@ def get_mask_from_json(json_path, img):
         with open(json_path, "r", encoding="cp1252") as r:
             anno = json.loads(r.read())
 
+    # 从json文件中提取出多边形的注释信息
     inform = anno["shapes"]
     comments = anno["text"]
     is_sentence = anno["is_sentence"]

@@ -23,6 +23,7 @@ from feeders import Feeder
 from utils import configure_optimizer, set_seed, LR_Scheduler
 
 def init_seed(seed):
+    '''Set seed for reproducibility'''
     torch.cuda.manual_seed_all(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -31,8 +32,10 @@ def init_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
+    
 def ddp_setup(rank, world_size):
     """
+    Initialize the distributed data parallel process group
     Args:
         rank: Unique identifier of each process
         world_size: Total number of processes
@@ -44,6 +47,7 @@ def ddp_setup(rank, world_size):
     
 
 def lr_lambda(current_step):
+    '''Learning rate scheduler'''
     warmup_steps = 100  
     if current_step < warmup_steps:
         return float(current_step) / float(max(1, warmup_steps))
@@ -117,15 +121,18 @@ class Trainer:
         self.lr_scheduler_agent=torch.optim.lr_scheduler.LambdaLR(self.optimizer_agent, lr_lambda)
 
     def run(self) -> None:
+        '''
+        主要的训练函数
+        '''
         min_loss = None
         for epoch in range(self.start_epoch, 1 + self.cfg['common']['epochs']):
             if self.gpu == 0:
-                print(f"\nEpoch {epoch} / {self.cfg['common']['epochs']}\n")
+                print(f"\nEpoch {epoch} / {self.cfg['common']['epochs']}\n") # 没有GPU则打印当前的epoch
             start_time = time.time()
             to_log = []
-            save_best_should = False
+            save_best_should = False # 是否保存最好的模型
             
-            self.train_sampler.set_epoch(epoch)
+            self.train_sampler.set_epoch(epoch) # 用于重置当前采样器的状态，并将其初始化为指定的轮次（epoch）
             if self.cfg['training']['should']:
                 to_log += self.train_agent(epoch)
 
@@ -147,7 +154,9 @@ class Trainer:
         Tester(self.agent,self.cfg,self.episode_dir)
         self.finish()
         
+        
     def train_agent(self, epoch: int) -> None:
+        '''Train the agent'''
         self.agent.train()
         self.agent.zero_grad()
 
@@ -156,13 +165,16 @@ class Trainer:
         cfg_agent = self.cfg['training']['agent']
         steps_per_epoch = len(self.train_dataset)
 
-        if epoch > cfg_agent['start_after_epochs']:
+        if epoch > cfg_agent['start_after_epochs']: # 如果当前的 epoch 大于 start_after_epochs，那么就开始训练
+            # metrics_agent表示训练的结果
             metrics_agent = self.train_component(self.agent, self.optimizer_agent, steps_per_epoch=steps_per_epoch, lr_scheduler=self.lr_scheduler_agent, **cfg_agent)
         self.agent.eval()
 
         return [{'epoch': epoch, **metrics_agent}]
 
     def train_component(self, component: nn.Module, optimizer: torch.optim.Optimizer, steps_per_epoch: int,  max_grad_norm: Optional[float],  lr_scheduler= None, **kwargs_loss: Any) -> Dict[str, float]:
+        '''Train the component'''
+        
         loss_total_epoch = 0.0
         intermediate_losses = defaultdict(float)
         mean_loss = 0

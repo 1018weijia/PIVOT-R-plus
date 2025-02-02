@@ -30,24 +30,35 @@ except:
     from Env.simUtils import SimServer
 
 def Resize(mat,img_size=224):
-    if isinstance(img_size,int):
+    '''
+    将图片缩放到指定大小
+    '''
+    if isinstance(img_size,int): # 如果是整数，将其转换为元组
         img_size = (img_size, img_size)
-    if isinstance(mat,np.ndarray):
+    if isinstance(mat,np.ndarray): # 如果是numpy数组，转换为PIL图片
         if mat.dtype !=np.uint8:
             mat = (mat*255).astype(np.uint8)
-        mat = Image.fromarray(mat, mode='RGB')
-    mat = mat.resize(img_size)
-    mat = np.array(mat)
-    mat = 1.0 * mat
+        mat = Image.fromarray(mat, mode='RGB') # 从numpy数组创建PIL图片
+    mat = mat.resize(img_size) # 缩放图片
+    mat = np.array(mat) # 将PIL图片转换为numpy数组
+    mat = 1.0 * mat 
     mat = mat/255.0
     return mat
 
+
 def find_img(frame,img_size=256):
+    '''
+    从frame中找到图片, 并将其缩放到指定大小
+    '''
     if 'img'+str(img_size) in frame.keys():
         return frame['img'+str(img_size)]
     return Resize(frame['img'],img_size)
 
+
 def get_mask_from_json(json_path, img):
+    '''
+    从json文件中获取mask
+    '''
     try:
         with open(json_path, "r") as r:
             anno = json.loads(r.read())
