@@ -211,26 +211,51 @@ class Feeder(Dataset):
 
 
     def read_data(self,data_paths,instructions_path,instructions_level,data_size=None):
+        '''
+        此方法用于读取数据和指令，将数据存储到类的属性中
+        data_paths 是包含数据文件夹路径的列表
+        instructions_path 是存储指令的文件路径
+        instructions_level 是指令的级别
+        data_size 用于指定要使用的数据量，可为整数或浮点数，默认为 None 表示使用所有数据        
+        '''
+
         total_files=[]
+        # 遍历所有数据路径
         for path in data_paths:
+            # 获取路径下的所有文件夹
             files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
+            # 对文件夹进行排序
             files = sorted(files)
+            # 将文件夹路径添加到 total_files 列表中
             total_files+=files
+            
+            
         if isinstance(data_size,int):
+            # 如果 data_size 是整数，截取 total_files 列表的前 data_size 个元素，即只使用指定数量的数据文件夹
             total_files=total_files[:data_size]
+            
         elif isinstance(data_size,float):
+            # 如果 data_size 是浮点数，将其转换为整数，表示使用总数据量的百分比
+            # len(total_files) 获取 total_files 列表的长度，即总数据量
+            # data_size 乘以总数据量得到要使用的数据量
+
             data_size = int(len(total_files)*data_size)
             total_files=total_files[:data_size]
             
         with open(instructions_path,'rb') as f:
             instructions = pickle.load(f)
+            
         self.data,self.instructions = total_files, instructions
+        
+        # 初始化类的属性，用于存储从每个数据文件夹中提取的图像、状态、下一帧图像、动作、指令和所属文件夹信息
         self.total_imgs = []
         self.total_states = []
         self.total_next_imgs = []
         self.total_actions = []
         self.total_instrs = []
         self.total_belongs = []
+        
+        
         for i,tra in tqdm(enumerate(total_files)):
             imgs,states,next_imgs,actions,instrs,belongs = self.get_data_from_one_tra(tra)
             self.total_imgs += imgs
@@ -240,41 +265,74 @@ class Feeder(Dataset):
             self.total_instrs += instrs
             self.total_belongs += belongs
 
+
     def get_data_from_one_tra(self,tra):
+        '''
+        此函数用于从单个轨迹文件夹中提取数据，包括图像、状态、动作、指令等信息
+        参数 tra 是单个轨迹文件夹的路径
+        '''
+        
+        # 查找并加载轨迹文件夹中的 .pkl 文件，获取其中的数据
         files = [os.path.join(tra, item) for item in os.listdir(tra) if os.path.isfile(os.path.join(tra, item)) and item.endswith('pkl')]
         assert len(files)==1
         file = files[0]
+        
         with open(file,'rb') as f:
             sample=pickle.load(f)
+            
+        # 查找并排序轨迹文件夹中的 .jpg 图像文件
         images = [os.path.join(tra, item) for item in os.listdir(tra) if os.path.isfile(os.path.join(tra, item)) and item.endswith('jpg')]
         images = sorted(images)
+        # 查找并排序轨迹文件夹中的 .json 文件
         jsons = [os.path.join(tra, item) for item in os.listdir(tra) if os.path.isfile(os.path.join(tra, item)) and item.endswith('json')]
         jsons = sorted(jsons)
+        
+        # 初始化一个空列表，用于存储所有 .json 文件的内容
         json_contents = []
 
         for file in jsons:
             with open(file) as f:
                 data=json.load(f)
             json_contents.append(data)
+        
+        # 提取机器人的位置信息
         x,y,z=sample['robot_location']
+        
+        # 如果 sample 数据中没有 'event' 字段，则默认事件类型为 'graspTargetObj'；否则，使用 sample 中记录的事件类型
         if 'event' not in sample.keys():
             event = 'graspTargetObj'
         else:
             event = sample['event']
+            
+        # 确定目标物体的信息
         targetObjID=sample['targetObjID']
         targetObj = self.objs[self.objs.ID==targetObjID].Name.values[0]
+        
+        # 根据目标物体的 ID，从 self.objs 数据中提取目标物体的详细信息
         level=random.choice(self.instructions_level)
         target = self.objs[self.objs.ID == sample['targetObjID']].iloc[0]
+        
+        # 遍历 sample 中的物体列表，将除目标物体外的其他物体 ID 添加到 other_id 列表中
         other_id = []
         for obj in sample['objList'][:]:
             if obj[0]!=targetObjID:
                 other_id.append(obj[0])
+                
+        # 根据其他物体的 ID，从 self.objs 数据中提取其他物体的详细信息
         other = self.objs[self.objs.ID.isin(other_id)]
+        
+        # 如果存在其他物体，则获取第一个其他物体的名称
         if len(other)>0:
             otherObj = other.Name.values[0]
+        
+        # 如果目标物体不在指令字典中，将指令级别设为 0
         if target.Name not in self.instructions.keys():
             level=0
+            
+        # 初始化一个空列表，用于存储最终的指令
         final_instrs = []
+        
+        # 根据事件类型，生成不同的指令
         if event == 'graspTargetObj':
             final_instrs = ['Pick a '+targetObj+'.']
         elif event == 'placeTargetObj':
@@ -289,6 +347,8 @@ class Feeder(Dataset):
             final_instrs = ['Push ' + targetObj + ' left'+'.']
         elif event == 'pushRight':
             final_instrs = ['Push ' + targetObj + ' right'+'.']
+        
+        # 如果指令级别大于 0，根据指令字典生成更详细的指令
         if level >0:
             instrs = self.instructions[event][target.Name]
             for way in instrs.keys():
@@ -296,7 +356,10 @@ class Feeder(Dataset):
                 if way!='descriptions':
                     continue
                 if way=='descriptions':
+                    # 初始化可能的属性列表
                     can_att = ['name', 'color', 'shape', 'application', 'other']
+                    
+                    # 根据目标物体和其他物体的属性，过滤掉重复的属性
                     if target.Name in other.Name.values:
                         can_att.remove('name')
                     if target.Color in other.Color.values:
@@ -306,19 +369,26 @@ class Feeder(Dataset):
                     if target.Application in other.Application.values:
                         can_att.remove('application')
                     if target.Other in other.Other.values:
-                        can_att.remove('other')    
+                        can_att.remove('other')  
+                    
+                    # 如果目标物体比其他物体大或小，添加相应的属性  
                     if len(sample['objList'])>1 and (target.Size > other.Size.values+1).all():
                         can_att.append('largest')
                     if len(sample['objList'])>1 and (target.Size < other.Size.values-1).all():
                         can_att.append('smallest')
                 else:
+                    # 初始化位置相关的属性列表
                     origin_att = ['left','right','close','distant','left front','front right','behind left','behind rght']
                     target_index = sample['target_obj_index']-1
+                    
+                    # 获取目标物体的位置信息
                     loc1 = sample['objList'][target_index][1:3]
                     if len(sample['objList'])>1:
                         for obj in sample['objList'][:]:
                             if obj[0]==sample['targetObjID']:
                                 continue
+                            
+                            # 获取其他物体的位置信息
                             loc2 = obj[1:3]
                             can_att = []
                             if loc1[1]-loc2[1]>5:
@@ -336,7 +406,9 @@ class Feeder(Dataset):
                             if loc1[1]-loc2[1]>5 and loc1[0]-loc2[0]>5:
                                 can_att.append('behind left')     
                             if loc1[1]-loc2[1]<-5 and loc1[0]-loc2[0]>5:
-                                can_att.append('behind rght')  
+                                can_att.append('behind rght') 
+
+                            # 取交集，更新可能的位置属性列表
                             origin_att = set(origin_att).intersection(set(can_att))
                             origin_att = list(origin_att)
                         can_att = origin_att
