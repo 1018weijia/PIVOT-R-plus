@@ -83,7 +83,9 @@ def get_mask_from_json(json_path, img):
             continue
 
         tmp_mask = np.zeros((height, width), dtype=np.uint8)
+        # 在临时掩码上绘制由points定义的多边形轮廓，线条颜色为1，线条宽度为1
         cv2.polylines(tmp_mask, np.array([points], dtype=np.int32), True, 1, 1)
+        # 将由points定义的多边形内部填充为1(相加起来就是多边形的面积)
         cv2.fillPoly(tmp_mask, np.array([points], dtype=np.int32), 1)
         tmp_area = tmp_mask.sum()
 
@@ -110,9 +112,10 @@ def get_mask_from_json(json_path, img):
         cv2.polylines(mask, np.array([points], dtype=np.int32), True, label_value, 1)
         cv2.fillPoly(mask, np.array([points], dtype=np.int32), label_value)
 
+    # 返回最终的掩码图像，JSON文件中的注释文本，是否为句子的标识，动作描述
     return mask, comments, is_sentence, action
 
-
+# 机器人各关节的运动范围
 actuatorRanges=np.array([[-30.00006675720215, 31.65018653869629],
  [-110.00215911865234, 30.00006675720215],
  [-90.00020599365234, 90.00020599365234],
@@ -147,9 +150,14 @@ actuatorRanges=np.array([[-30.00006675720215, 31.65018653869629],
 
 
 class AddGaussianNoise(object):
+    '''
+    一个数据增强的类，用于给图像添加高斯噪声，增强模型的鲁棒性
+    '''
     def __init__(self, mean=0., std=1.):
         self.mean = mean
         self.std = std
+        
+        
     def __call__(self, img):
         np_img = np.array(img)
         noise = np.random.normal(self.mean, self.std, np_img.shape).astype(np.float32)
@@ -158,9 +166,13 @@ class AddGaussianNoise(object):
         noisy_img = Image.fromarray(noisy_img.astype(np.uint8)) 
         return noisy_img
 
+
+
+
+
 class Feeder(Dataset):
     objs = SimServer.objs
-    def __init__(self, data_path, instructions_path, control='ee', history_len=3, instructions_level=[3] bin=256, img_size=224, data_size=None,dataAug=True,image_process=None):
+    def __init__(self, data_path, instructions_path, control='ee', history_len=3, instructions_level=[3], bin=256, img_size=224, data_size=None,dataAug=True,image_process=None):
         self.data_path = data_path
         self.instructions_path = instructions_path
         
@@ -170,20 +182,33 @@ class Feeder(Dataset):
         self.bin = bin
         self.img_size = img_size
         self.dataAug = dataAug
-
+        # 定义物体 ID 到名称的映射和名称到 ID 的映射
         self.id2name = {0: 'Mug', 1: 'Banana', 2: 'Toothpaste', 3: 'Bread', 4: 'Softdrink',5: 'Yogurt',6: 'ADMilk',7: 'VacuumCup',8: 'Bernachon',9: 'BottledDrink',10: 'PencilVase',11: 'Teacup',12: 'Caddy',13: 'Dictionary',14: 'Cake',15: 'Date',16: 'Stapler',17: 'LunchBox',18: 'Bracelet',19: 'MilkDrink',20: 'CocountWater',21: 'Walnut',22: 'HamSausage',23: 'GlueStick',24: 'AdhensiveTape',25: 'Calculator',26: 'Chess',27: 'Orange',28: 'Glass',29: 'Washbowl',30: 'Durian',31: 'Gum',32: 'Towl',33: 'OrangeJuice',34: 'Cardcase',35: 'RubikCube',36: 'StickyNotes',37: 'NFCJuice',38: 'SpringWater',39: 'Apple',40: 'Coffee',41: 'Gauze',42: 'Mangosteen',43: 'SesameSeedCake',44: 'Glove',45: 'Mouse',46: 'Kettle',47: 'Atomize',48: 'Chips',49: 'SpongeGourd',50: 'Garlic',51: 'Potato',52: 'Tray',53: 'Hemomanometer',54: 'TennisBall',55: 'ToyDog',56: 'ToyBear',57: 'TeaTray',58: 'Sock',59: 'Scarf',60: 'ToiletPaper',61: 'Milk',62: 'Soap',63: 'Novel',64: 'Watermelon',65: 'Tomato',66: 'CleansingFoam',67: 'CocountMilk',68: 'SugarlessGum',69: 'MedicalAdhensiveTape',70: 'SourMilkDrink',71: 'PaperCup',72: 'Tissue'}
         self.name2id = {v: k for k, v in self.id2name.items()}
 
         self.read_data(self.data_path,self.instructions_path,self.instructions_level,data_size)
+        
+        
         import open_clip
+        # 创建预训练的 CLIP 模型和对应的图像预处理转换方法。
         _, _, self.image_preprocess = open_clip.create_model_and_transforms(image_process['clip_arch'], pretrained=image_process['clip_path'])
+        # 为了在后续可能需要使用原始的、未经过数据增强处理的预处理方法
         self.origin_image_preprocess = self.image_preprocess
+        
+        # 如果开启数据增强，添加颜色抖动变换
         if dataAug:
+            # self.image_preprocess 是一个组合的图像转换操作，通常包含多个连续的转换步骤（如缩放、裁剪、归一化等），因此可以转换为一个列表。
+            # 通过 .transforms 属性可以获取这些转换步骤组成的列表，将其转换为 Python 列表存储在 transform_list 中，方便后续操作。
             transform_list = list(self.image_preprocess.transforms)
+            # 创建一个颜色抖动的转换操作，包括亮度、对比度、饱和度和色调的变化。
             new_transform = transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.0)
+            # 将颜色抖动的转换操作插入到 transform_list 的第 2 个位置，即在缩放和裁剪之后、归一化之前进行颜色抖动。
             transform_list.insert(2, new_transform)
+            # 更新 image_preprocess 图像预处理方法，将 transform_list 中的转换操作组合为一个新的 transforms.Compose 对象。
             updated_transform = transforms.Compose(transform_list)
+            # 更新 image_preprocess 属性，将其设置为新的图像预处理方法。
             self.image_preprocess = updated_transform
+
 
     def read_data(self,data_paths,instructions_path,instructions_level,data_size=None):
         total_files=[]
