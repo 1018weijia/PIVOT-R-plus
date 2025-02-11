@@ -434,9 +434,11 @@ class Feeder(Dataset):
         next_imgs = []
         now_joints = [0]*14 + [36.0,-40.0,40.0,-90.0,5.0,0.0,0.0]
         last_action = np.array(sample['initLoc'])
-
+        
+        # 遍历轨迹中的每一帧（除最后一帧）
         for frame_id,frame in enumerate(sample['trajectory'][:-1]):
             with Image.open(images[frame_id]) as f:
+                # 调整为 224x224 大小
                 img = f.resize((224, 224),Image.LANCZOS)
             imgs.append(img) 
             sensors=frame['state']['sensors']
@@ -452,6 +454,8 @@ class Feeder(Dataset):
                     frame['action'] = [*frame['action'],0,0]
                 if frame['action'][5]>=1:
                     frame['action'][5] = 1
+                
+                
                 def discretize_value(value, num_bins=256):
                     value_clipped = np.clip(value, -1, 1)
                     discretized = np.round((value_clipped + 1) / 2 * (num_bins - 1))
@@ -461,12 +465,17 @@ class Feeder(Dataset):
             else:
                 before_joints = frame['state']['joints']
                 before_joints = [joint['angle'] for joint in before_joints]
+                
+                
                 after_joints = sample['trajectory'][frame_id+1]['state']['joints'] 
                 after_joints = [joint['angle'] for joint in after_joints]
+                
                 map_id=[0,1,2,3,6,9,12,15,16,17,19,20,21,22,23,24,25,26,27,28,29,30,
                     33,36,39,42,43,44,46,47,48]
+                
                 before_joints=[before_joints[id] for id in map_id]
                 after_joints=[after_joints[id] for id in map_id]
+                
                 joints = (np.array(after_joints)-np.array(before_joints)) /(actuatorRanges[:,1]-actuatorRanges[:,0])*50
                 action = np.array([joints[-12],joints[-11],joints[-6],joints[-5],frame['action'][-1]],dtype=np.float64)
             actions.append(action)
@@ -477,6 +486,7 @@ class Feeder(Dataset):
         next_imgs = [next_img] * len(imgs)
         tmp_imgs=[]
         tmp_states=[]
+        
         for i in range(len(imgs)):
             if i+1>=self.history_len:
                 tmp_imgs.append(imgs[i-self.history_len+1:i+1])
