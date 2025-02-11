@@ -13,22 +13,29 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 
+# 学习率调度器的名称映射到相应的类
 LR_Scheduler = {'StepLR':StepLR,
                 'CosineAnnealingLR':CosineAnnealingLR}
 
 def configure_optimizer(model, learning_rate, weight_decay, *blacklist_module_names):
     """Credits to https://github.com/karpathy/minGPT"""
     # separate out all parameters to those that will and won't experience regularizing weight decay
-    decay = set()
-    no_decay = set()
-    whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv1d)
-    blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, torch.nn.Parameter)
+    decay = set() # 进行权重衰减的参数
+    no_decay = set() # 不进行权重衰减的参数
+    
+    
+    whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv1d) # 权重参数会进行权重衰减的模块
+    blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, torch.nn.Parameter) # 权重参数不会进行权重衰减的模块
+    
+    
     for mn, m in model.named_modules():
         for pn, p in m.named_parameters():
             
             fpn = '%s.%s' % (mn, pn) if mn else pn  # full param name
+            # 检查参数的完整名称是否以黑名单中的模块名称开头。如果是，则将该参数名称添加到 no_decay 集合中
             if any([fpn.startswith(module_name) for module_name in blacklist_module_names]):
                 no_decay.add(fpn)
+            # 如果参数名称中包含 bias，则将该参数名称添加到 no_decay 集合中
             elif 'bias' in pn:
                 # all biases will not be decayed
                 no_decay.add(fpn)
